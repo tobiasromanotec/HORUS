@@ -46,10 +46,10 @@ import {
   X,
 } from "lucide-react";
 import { api, ApiError } from "./lib/api";
-import type { Anomaly, Tower, TowerStatus, User } from "./types";
+import type { Anomaly, DroneInspectionSource, Tower, TowerStatus, User } from "./types";
 import TowerMap from "./components/TowerMap";
 import CameraViewer from "./components/CameraViewer";
-import DroneInspection from "./components/DroneInspection";
+import DroneInspection, { DroneInspectionSettings } from "./components/DroneInspection";
 
 const statusNames: Record<TowerStatus, string> = {
   operativo: "Operativo",
@@ -167,6 +167,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [towers, setTowers] = useState<Tower[]>([]);
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [inspection, setInspection] = useState<DroneInspectionSource | null>(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [demo, setDemo] = useState(false);
@@ -175,12 +176,14 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   async function refresh() {
-    const [t, a] = await Promise.all([
+    const [t, a, d] = await Promise.all([
       api<{ towers: Tower[] }>("/towers"),
       api<{ anomalies: Anomaly[] }>("/anomalies"),
+      api<{ inspection: DroneInspectionSource | null }>("/drone-inspection"),
     ]);
     setTowers(t.towers);
     setAnomalies(a.anomalies);
+    setInspection(d.inspection);
     setError("");
   }
   useEffect(() => {
@@ -286,7 +289,9 @@ export default function App() {
         ? "Mapa de operaciones"
         : location.pathname === "/anomalias"
           ? "Centro de anomalías"
-          : "Vista general";
+          : location.pathname === "/administracion"
+            ? "Administración"
+            : "Vista general";
   return (
     <div className="app-shell">
       {mobile && (
@@ -329,6 +334,12 @@ export default function App() {
             <span>Anomalías</span>
             {pending > 0 && <em className="nav-count">{pending}</em>}
           </NavLink>
+          {user.role === "admin" && (
+            <NavLink to="/administracion">
+              <SlidersHorizontal size={19} />
+              <span>Administración</span>
+            </NavLink>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <div className="system-card">
@@ -419,10 +430,16 @@ export default function App() {
             <Route
               path="/"
               element={
-                <Dashboard towers={towers} anomalies={anomalies} demo={demo} />
+                <Dashboard towers={towers} anomalies={anomalies} demo={demo} inspection={inspection} />
               }
             />
             <Route path="/mapa" element={<MapPage towers={towers} />} />
+            <Route path="/administracion" element={user.role === "admin" ? (
+              <>
+                <PageHeading eyebrow="ADMINISTRACIÓN" title="Transmisión de la inspección" description="Un único enlace para seguir el vuelo desde el inicio de HORUS." />
+                <DroneInspectionSettings source={inspection} onSaved={refresh} />
+              </>
+            ) : <Navigate to="/" replace />} />
             <Route
               path="/equipos"
               element={
@@ -695,10 +712,12 @@ function Dashboard({
   towers,
   anomalies,
   demo,
+  inspection,
 }: {
   towers: Tower[];
   anomalies: Anomaly[];
   demo: boolean;
+  inspection: DroneInspectionSource | null;
 }) {
   const [selected, setSelected] = useState<string>();
   const pending = anomalies.filter((a) => a.status === "pendiente");
@@ -762,6 +781,7 @@ function Dashboard({
           {demo ? "VISTA DE DEMOSTRACIÓN" : "CENTRO DE MONITOREO"}
         </span>
       </section>
+      <DroneInspection source={inspection} />
       <section className="stats-grid" aria-label="Resumen de la operación">
         <Stat
           label="Equipos en la flota"
@@ -1416,7 +1436,6 @@ function TowerDetail({
         {[
           ["general", "Vista general"],
           ["camaras", "Cámaras"],
-          ["dron", "Inspección con dron"],
           ["parametros", "Parámetros"],
           ["anomalias", "Anomalías"],
         ].map(([v, label]) => (
@@ -1430,9 +1449,6 @@ function TowerDetail({
           </button>
         ))}
       </div>
-      {(tab === "general" || tab === "dron") && (
-        <DroneInspection key={tower.id} tower={tower} canEdit={canEdit} onSaved={refresh} />
-      )}
       {(tab === "general" || tab === "parametros") && (
         <section className="parameter-section">
           <div className="section-title">

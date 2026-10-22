@@ -1,63 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { Check, ExternalLink, Play, RotateCw, Settings2, X } from "lucide-react";
+import { Check, ExternalLink, Play, RotateCw, X } from "lucide-react";
 import { api } from "../lib/api";
-import type { Tower } from "../types";
+import type { DroneInspectionSource } from "../types";
 import "./drone-inspection.css";
 
-export default function DroneInspection({
-  tower,
-  canEdit,
-  onSaved,
-}: {
-  tower: Tower;
-  canEdit: boolean;
-  onSaved: () => Promise<void>;
-}) {
-  const source = tower.droneInspection;
+export default function DroneInspection({ source }: { source: DroneInspectionSource | null }) {
   const [watching, setWatching] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [url, setUrl] = useState(source?.url || "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [retry, setRetry] = useState(0);
-  const formId = `drone-config-${tower.id}`;
-  const playerId = `drone-player-${tower.id}`;
-
-  function configure() {
-    setUrl(source?.url || "");
-    setError("");
-    setNotice("");
-    setEditing(true);
-  }
-
-  async function save(nextUrl: string) {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await api(`/towers/${tower.id}/drone-inspection`, {
-        method: "PATCH",
-        body: JSON.stringify({ url: nextUrl }),
-      });
-      await onSaved();
-      setWatching(false);
-      setEditing(false);
-      setNotice(nextUrl.trim() ? "Transmisión guardada para este equipo." : "Enlace de la inspección eliminado.");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void save(url);
-  }
-
+  const playerId = "drone-player";
   return (
-    <section className="drone-inspection" aria-labelledby={`drone-title-${tower.id}`}>
+    <section className="drone-inspection" aria-labelledby="drone-title">
       <div className="drone-header">
         <div className="drone-symbol" aria-hidden="true">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -69,48 +21,88 @@ export default function DroneInspection({
           </svg>
         </div>
         <div className="drone-heading">
-          <span className="drone-eyebrow">INSPECCIÓN AÉREA · {tower.name}</span>
-          <h2 id={`drone-title-${tower.id}`}>Ver inspección con dron en vivo</h2>
-          <p>Una mirada desde el aire a la inspección de esta torre.</p>
+          <span className="drone-eyebrow">INSPECCIÓN AÉREA · HORUS</span>
+          <h2 id="drone-title">Ver inspección con dron en vivo</h2>
+          <p>Seguí el vuelo y la inspección actual desde un solo lugar.</p>
         </div>
         <span className={`drone-badge ${source ? "drone-configured" : ""}`}>
-          {source ? "Enlace disponible" : "Sin transmisión configurada"}
+          {source ? "Enlace disponible" : "Próxima inspección"}
         </span>
       </div>
 
       <div className="drone-body">
         <div className="drone-controls">
-          <p>
-            {source
-              ? "Abrí el video aquí. YouTube indica si la inspección está en vivo, programada o finalizada."
-              : canEdit
-                ? "Vinculá el enlace de YouTube de la inspección para que tu equipo pueda seguirla desde aquí."
-                : "Todavía no hay una transmisión vinculada. Una cuenta administradora puede configurar la inspección de esta torre."}
-          </p>
-          <div className="drone-actions">
-            {source && (
-              <button
-                className="button button-primary"
-                onClick={() => setWatching(!watching)}
-                aria-expanded={watching}
-                aria-controls={playerId}
-              >
-                {watching ? <X size={16} /> : <Play size={16} />}
-                {watching ? "Cerrar transmisión" : "Ver transmisión"}
-              </button>
-            )}
-            {canEdit && !editing && (
-              <button className="button button-secondary" onClick={configure} aria-controls={formId}>
-                <Settings2 size={16} /> {source ? "Editar transmisión" : "Configurar transmisión"}
-              </button>
-            )}
-          </div>
+          <p>{source
+            ? "Mirá la inspección aquí. YouTube indica si el vuelo está en vivo, programado o finalizado."
+            : "Cuando haya una inspección disponible, podrás seguir el vuelo desde aquí."}</p>
+          {source && <button className="button button-primary" onClick={() => setWatching(!watching)} aria-expanded={watching} aria-controls={playerId}>
+            {watching ? <X size={16} /> : <Play size={16} />}
+            {watching ? "Cerrar transmisión" : "Ver transmisión"}
+          </button>}
         </div>
+        {watching && source && (
+          <div id={playerId} className="drone-player">
+            <div className="drone-video">
+              <iframe
+                key={`${source.videoId}-${retry}`}
+                title="Inspección con dron en vivo"
+                src={`https://www.youtube-nocookie.com/embed/${source.videoId}?autoplay=1&mute=1&playsinline=1&rel=0`}
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            </div>
+            <div className="drone-player-footer">
+              <p>El video comienza sin sonido; podés activarlo en el reproductor. Si no se reproduce aquí, abrilo en YouTube.</p>
+              <div className="drone-actions">
+                <button className="button button-secondary" onClick={() => setRetry(retry + 1)}>
+                  <RotateCw size={15} /> Recargar video
+                </button>
+                <a className="button button-secondary" href={source.url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink size={15} /> Abrir en YouTube
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
-        {notice && <p className="drone-notice" role="status"><Check size={16} />{notice}</p>}
-
-        {editing && canEdit && (
-          <form id={formId} className="tower-form drone-form" onSubmit={submit} aria-label="Configurar inspección con dron">
+export function DroneInspectionSettings({ source, onSaved }: {
+  source: DroneInspectionSource | null;
+  onSaved: () => Promise<void>;
+}) {
+  const [url, setUrl] = useState(source?.url || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const formId = "drone-settings";
+  async function save(nextUrl: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const { inspection } = await api<{ inspection: DroneInspectionSource | null }>("/drone-inspection", {
+        method: "PATCH", body: JSON.stringify({ url: nextUrl }),
+      });
+      setUrl(inspection?.url || "");
+      await onSaved();
+      setNotice(inspection ? "Transmisión guardada para el inicio de HORUS." : "Enlace de la inspección eliminado.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void save(url);
+  }
+  return <section className="panel">
+    {notice && <p className="drone-notice drone-settings-notice" role="status"><Check size={16} />{notice}</p>}
+          <form id={formId} className="tower-form drone-settings-form" onSubmit={submit} aria-label="Configurar inspección con dron">
             <label htmlFor={`${formId}-url`}>Enlace de YouTube</label>
             <input
               id={`${formId}-url`}
@@ -138,42 +130,14 @@ export default function DroneInspection({
                   Quitar enlace
                 </button>
               )}
-              <button type="button" className="button button-secondary" disabled={busy} onClick={() => setEditing(false)}>
-                Cancelar
+              <button type="button" className="button button-secondary" disabled={busy} onClick={() => setUrl(source?.url || "")}>
+                Restablecer
               </button>
               <button className="button button-primary" disabled={busy}>
                 <Check size={16} />{busy ? "Guardando…" : "Guardar transmisión"}
               </button>
             </div>
           </form>
-        )}
 
-        {watching && source && (
-          <div id={playerId} className="drone-player">
-            <div className="drone-video">
-              <iframe
-                key={`${source.videoId}-${retry}`}
-                title={`Inspección con dron de ${tower.name}`}
-                src={`https://www.youtube-nocookie.com/embed/${source.videoId}?autoplay=1&mute=1&playsinline=1&rel=0`}
-                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                allowFullScreen
-                referrerPolicy="strict-origin-when-cross-origin"
-              />
-            </div>
-            <div className="drone-player-footer">
-              <p>El video comienza sin sonido; podés activarlo en el reproductor. Si no se reproduce aquí, abrilo en YouTube.</p>
-              <div className="drone-actions">
-                <button className="button button-secondary" onClick={() => setRetry(retry + 1)}>
-                  <RotateCw size={15} /> Recargar video
-                </button>
-                <a className="button button-secondary" href={source.url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink size={15} /> Abrir en YouTube
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
+  </section>;
 }

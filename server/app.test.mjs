@@ -44,6 +44,60 @@ async function fixture(t, options = {}) {
   return { ...instance, request, login, dataDir, base };
 }
 
+test("shared drone inspection persists in settings without changing any tower", async (t) => {
+  const { request, login, db, dataDir } = await fixture(t);
+  const cookie = await login();
+  const before = db.prepare("SELECT * FROM towers ORDER BY id").all();
+  const result = await request("/drone-inspection", { method: "PATCH", cookie, body: { url: "https://youtu.be/M7lc1UVf-VE" } });
+  assert.equal(result.status, 200);
+  const saved = (await result.json()).inspection;
+  assert.equal(saved.videoId, "M7lc1UVf-VE");
+  assert.deepEqual((await (await request("/drone-inspection", { cookie })).json()).inspection, saved);
+  const reopened = await createApp({ dataDir, demo: true });
+  try {
+    assert.deepEqual(JSON.parse(reopened.db.prepare("SELECT value FROM settings WHERE key='droneInspection'").get().value), saved);
+  } finally { reopened.close(); }
+  assert.deepEqual(db.prepare("SELECT * FROM towers ORDER BY id").all(), before);
+  const removed = await request("/drone-inspection", { method: "PATCH", cookie, body: { url: "" } });
+  assert.equal((await removed.json()).inspection, null);
+});
+
+test("shared inspection requires authentication, admin writes and valid same-origin YouTube links", async (t) => {
+  const { request, login, db } = await fixture(t);
+  const body = { url: "https://youtu.be/M7lc1UVf-VE" };
+  assert.equal((await request("/drone-inspection")).status, 401);
+  assert.equal((await request("/drone-inspection", { method: "PATCH", body })).status, 401);
+  const cookie = await login();
+  for (const invalid of [{}, { url: null }, { url: "https://example.com" }, { ...body, towerId: "rig-101" }])
+    assert.equal((await request("/drone-inspection", { method: "PATCH", cookie, body: invalid })).status, 400);
+  assert.equal((await request("/drone-inspection", { method: "PATCH", cookie, body, headers: { origin: "https://evil.example" } })).status, 403);
+  db.prepare("UPDATE users SET role='viewer'").run();
+  assert.equal((await request("/drone-inspection", { cookie })).status, 200);
+  assert.equal((await request("/drone-inspection", { method: "PATCH", cookie, body })).status, 403);
+  assert.equal((await request("/drone-inspection", { method: "PATCH", cookie, body: { url: "" } })).status, 403);
+});
+
+test("one legacy inspection is reused, conflicting links are preserved and explicit removal prevents fallback", async (t) => {
+  const { request, login, db } = await fixture(t);
+  const cookie = await login();
+  const writeLegacy = (id, videoId) => db.prepare("UPDATE towers SET data=json_set(data, '$.droneInspection', json(?)) WHERE id=?")
+    .run(JSON.stringify({ videoId, url: `https://www.youtube.com/watch?v=${videoId}`, updatedAt: new Date().toISOString() }), id);
+  const read = async () => (await (await request("/drone-inspection", { cookie })).json()).inspection;
+  assert.equal(await read(), null);
+  writeLegacy("rig-101", "M7lc1UVf-VE");
+  assert.equal((await read()).videoId, "M7lc1UVf-VE");
+  writeLegacy("rig-204", "abcdefghijk");
+  assert.equal(await read(), null);
+  const before = db.prepare("SELECT * FROM towers ORDER BY id").all();
+  await request("/drone-inspection", { method: "PATCH", cookie, body: { url: "https://youtu.be/M7lc1UVf-VE" } });
+  assert.equal((await read()).videoId, "M7lc1UVf-VE");
+  await request("/drone-inspection", { method: "PATCH", cookie, body: { url: "" } });
+  assert.equal(await read(), null);
+  assert.deepEqual(db.prepare("SELECT * FROM towers ORDER BY id").all(), before);
+  db.prepare("UPDATE towers SET data=json_remove(data, '$.droneInspection') WHERE id='rig-204'").run();
+  assert.equal(await read(), null);
+});
+
 test("drone inspection is isolated by tower, persisted on disk and removable without touching operational data", async (t) => {
   const { request, login, dataDir } = await fixture(t);
   const cookie = await login();

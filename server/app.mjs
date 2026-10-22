@@ -395,6 +395,35 @@ export async function createApp(options = {}) {
   });
   app.use("/api", requireAuth);
   app.get("/api/auth/me", (req, res) => res.json({ user: req.user }));
+  const sharedInspection = () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'droneInspection'").get();
+    if (saved) return JSON.parse(saved.value);
+    // Preserve a previously configured link when there is only one distinct source.
+    // Never choose between different inspections or modify the original tower data.
+    const sources = new Map();
+    for (const row of db.prepare("SELECT data FROM towers").all()) {
+      const inspection = JSON.parse(row.data).droneInspection;
+      if (inspection?.videoId) sources.set(inspection.videoId, inspection);
+    }
+    return sources.size === 1 ? [...sources.values()][0] : null;
+  };
+  app.get("/api/drone-inspection", (_req, res) =>
+    res.json({ inspection: sharedInspection() }),
+  );
+  app.patch("/api/drone-inspection", requireAdmin, (req, res) => {
+    const body = record(req.body);
+    allowedKeys(body, ["url"]);
+    let source;
+    try {
+      source = parseYouTubeUrl(body.url);
+    } catch (error) {
+      throw fail(400, error.message);
+    }
+    const inspection = source ? { ...source, updatedAt: new Date().toISOString() } : null;
+    db.prepare("INSERT INTO settings (key, value) VALUES ('droneInspection', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+      .run(JSON.stringify(inspection));
+    res.json({ inspection });
+  });
   app.get("/api/towers", (_req, res) =>
     res.json({
       towers: db
