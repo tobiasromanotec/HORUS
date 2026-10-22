@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { seedDemo } from "./seed.mjs";
 import { hashPassword, verifyPassword } from "./passwords.mjs";
+import { parseYouTubeUrl } from "./youtube.mjs";
 
 const projectRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -246,7 +247,7 @@ export async function createApp(options = {}) {
     if (production)
       res.set(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' https:; media-src 'self' https: blob:; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' https:; media-src 'self' https: blob:; worker-src 'self' blob:; font-src 'self' data:; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       );
     next();
   });
@@ -410,6 +411,25 @@ export async function createApp(options = {}) {
   app.get("/api/towers/:id", (req, res) =>
     res.json({ tower: towerById(req.params.id) }),
   );
+  app.patch("/api/towers/:id/drone-inspection", requireAdmin, (req, res) => {
+    towerById(req.params.id);
+    const body = record(req.body);
+    allowedKeys(body, ["url"]);
+    let source;
+    try {
+      source = parseYouTubeUrl(body.url);
+    } catch (error) {
+      throw fail(400, error.message);
+    }
+    const inspection = source
+      ? { ...source, updatedAt: new Date().toISOString() }
+      : null;
+    // Keep existing cameras, telemetry and its timestamp intact, including on older databases.
+    db.prepare(
+      "UPDATE towers SET data = json_set(data, '$.droneInspection', json(?)) WHERE id = ?",
+    ).run(JSON.stringify(inspection), req.params.id);
+    res.json({ tower: towerById(req.params.id) });
+  });
   app.patch("/api/towers/:id/telemetry", requireAdmin, (req, res) => {
     towerById(req.params.id);
     const body = record(req.body);

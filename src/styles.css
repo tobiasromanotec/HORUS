@@ -1549,6 +1549,7 @@ select {
   border-radius: 5px;
 }
 .detail-tabs {
+  overflow-x: auto;
   margin-bottom: 28px;
   border-bottom: 1px solid #e1e8d7;
   padding-bottom: 14px;

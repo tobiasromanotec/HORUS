@@ -16,6 +16,11 @@ export interface Parameter {
   max: number;
   history: number[];
 }
+export interface DroneInspectionSource {
+  videoId: string;
+  url: string;
+  updatedAt: string;
+}
 export interface Tower {
   id: string;
   name: string;
@@ -31,6 +36,7 @@ export interface Tower {
   cameras: Camera[];
   parameters: Parameter[];
   demo: boolean;
+  droneInspection?: DroneInspectionSource | null;
 }
 export interface Anomaly {
   id: string;

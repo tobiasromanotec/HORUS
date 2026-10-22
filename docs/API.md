@@ -33,6 +33,20 @@ Las peticiones con cuerpo requieren `Content-Type: application/json`, con un lí
 
 `kind`: `hls`, `image` o `demo`; `status`: `online` u `offline`. Las fuentes reales deben usar HTTPS sin credenciales embebidas. Las de demostración usan imágenes locales `/assets/archivo.jpg`. Se permite una URL vacía solamente con la cámara deshabilitada. Respuesta: `{camera}`. El servidor guarda la configuración; el navegador solicita el contenido directamente a la fuente, sin proxy de video ni servidor RTSP incorporado.
 
+## Inspección con dron por YouTube
+
+`PATCH /towers/:id/drone-inspection` requiere una cuenta administradora:
+
+```json
+{ "url": "https://www.youtube.com/live/ID_DEL_VIDEO" }
+```
+
+Usa el enlace de una transmisión o video real (su identificador tiene 11 caracteres). Se admiten enlaces HTTPS de YouTube `watch?v=…`, `/live/…`, `youtu.be/…`, `/embed/…` y `/shorts/…`. Se rechazan otros dominios, URLs de canal, credenciales, HTML y campos adicionales. Los parámetros de seguimiento y reproducción se eliminan al guardar. `{ "url": "" }` quita la asociación sin afectar cámaras, mediciones, estados ni fechas de telemetría.
+
+Respuesta: `{tower}`, con `droneInspection: {videoId, url, updatedAt}` o `null` al quitar el enlace. Las torres anteriores pueden omitir este campo: no necesitan migración ni cambios en sus datos. La configuración se guarda en la misma base SQLite y pertenece únicamente a la torre indicada; los observadores pueden consultarla, pero no cambiarla.
+
+El navegador carga el reproductor de `www.youtube-nocookie.com` solamente cuando el usuario pulsa **Ver transmisión**. YouTube informa el estado real del video: HORUS no certifica que un enlace configurado esté emitiendo en vivo. La transmisión debe permitir inserción y ser accesible al visitante. No se necesita una clave de API ni la clave de transmisión del canal. El atributo `referrerPolicy` del iframe envía el origen del sitio a YouTube para identificar al reproductor, sin enviar la ruta de la torre.
+
 ## Parámetros
 
 `PATCH /towers/:id/telemetry` reemplaza atómicamente las mediciones actuales y actualiza `updatedAt`:

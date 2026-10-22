@@ -49,6 +49,7 @@ import { api, ApiError } from "./lib/api";
 import type { Anomaly, Tower, TowerStatus, User } from "./types";
 import TowerMap from "./components/TowerMap";
 import CameraViewer from "./components/CameraViewer";
+import DroneInspection from "./components/DroneInspection";
 
 const statusNames: Record<TowerStatus, string> = {
   operativo: "Operativo",
@@ -1415,6 +1416,7 @@ function TowerDetail({
         {[
           ["general", "Vista general"],
           ["camaras", "Cámaras"],
+          ["dron", "Inspección con dron"],
           ["parametros", "Parámetros"],
           ["anomalias", "Anomalías"],
         ].map(([v, label]) => (
@@ -1428,6 +1430,9 @@ function TowerDetail({
           </button>
         ))}
       </div>
+      {(tab === "general" || tab === "dron") && (
+        <DroneInspection key={tower.id} tower={tower} canEdit={canEdit} onSaved={refresh} />
+      )}
       {(tab === "general" || tab === "parametros") && (
         <section className="parameter-section">
           <div className="section-title">

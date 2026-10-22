@@ -44,6 +44,75 @@ async function fixture(t, options = {}) {
   return { ...instance, request, login, dataDir, base };
 }
 
+test("drone inspection is isolated by tower, persisted on disk and removable without touching operational data", async (t) => {
+  const { request, login, dataDir } = await fixture(t);
+  const cookie = await login();
+  const read = async (id) => (await (await request(`/towers/${id}`, { cookie })).json()).tower;
+  const before = await read("rig-101");
+  const other = await read("rig-204");
+  const route = "/towers/rig-101/drone-inspection";
+  const response = await request(route, {
+    method: "PATCH", cookie,
+    body: { url: "https://youtube.com/live/M7lc1UVf-VE?si=tracking" },
+  });
+  assert.equal(response.status, 200);
+  const { tower } = await response.json();
+  assert.equal(tower.droneInspection.videoId, "M7lc1UVf-VE");
+  assert.equal(tower.droneInspection.url, "https://www.youtube.com/watch?v=M7lc1UVf-VE");
+  assert.ok(Number.isFinite(Date.parse(tower.droneInspection.updatedAt)));
+  const { droneInspection, ...unchanged } = tower;
+  assert.deepEqual(unchanged, before);
+  assert.deepEqual(await read("rig-204"), other);
+  assert.deepEqual((await read("rig-101")).droneInspection, droneInspection);
+
+  // Reopen the same database in another app instance, with its own connection.
+  const reopened = await createApp({ dataDir, demo: true, secureCookies: false });
+  try {
+    const saved = JSON.parse(reopened.db.prepare("SELECT data FROM towers WHERE id = ?").get("rig-101").data);
+    assert.deepEqual(saved.droneInspection, droneInspection);
+  } finally {
+    reopened.close();
+  }
+  const replaced = await request(route, {
+    method: "PATCH", cookie, body: { url: "https://youtu.be/abcdefghijk" },
+  });
+  assert.equal((await replaced.json()).tower.droneInspection.videoId, "abcdefghijk");
+  const removed = await request(route, { method: "PATCH", cookie, body: { url: "" } });
+  assert.equal(removed.status, 200);
+  assert.deepEqual((await removed.json()).tower, { ...before, droneInspection: null });
+});
+
+test("drone configuration requires an administrator and validates requests without overwriting data", async (t) => {
+  const { request, login, db } = await fixture(t);
+  const route = "/towers/rig-101/drone-inspection";
+  const body = { url: "https://youtu.be/M7lc1UVf-VE" };
+  assert.equal((await request(route, { method: "PATCH", body })).status, 401);
+  const cookie = await login();
+  const before = db.prepare("SELECT data FROM towers WHERE id='rig-101'").get().data;
+  for (const invalid of [{}, { url: null }, { url: 123 }, { url: "https://example.com/video" }, { ...body, videoId: "override" }])
+    assert.equal((await request(route, { method: "PATCH", cookie, body: invalid })).status, 400);
+  assert.equal((await request(route, {
+    method: "PATCH", cookie, body, headers: { origin: "https://untrusted.example" },
+  })).status, 403);
+  assert.equal((await request("/towers/missing/drone-inspection", { method: "PATCH", cookie, body })).status, 404);
+  db.prepare("UPDATE users SET role='viewer'").run();
+  assert.equal((await request(route, { method: "PATCH", cookie, body })).status, 403);
+  assert.equal((await request(route, { method: "PATCH", cookie, body: { url: "" } })).status, 403);
+  assert.equal((await request("/towers/rig-101", { cookie })).status, 200);
+  assert.equal(db.prepare("SELECT data FROM towers WHERE id='rig-101'").get().data, before);
+});
+
+test("production CSP permits only the privacy-enhanced YouTube frame and keeps existing protections", async (t) => {
+  const { request } = await fixture(t, { production: true });
+  const response = await request("/health");
+  const csp = response.headers.get("content-security-policy");
+  assert.match(csp, /(?:^|; )frame-src https:\/\/www\.youtube-nocookie\.com;/);
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.match(csp, /script-src 'self';/);
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+});
+
 test("health is public, but tower and anomaly data require authentication", async (t) => {
   const { request } = await fixture(t);
   assert.deepEqual(await (await request("/health")).json(), {

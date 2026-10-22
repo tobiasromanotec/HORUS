@@ -24,6 +24,7 @@ La demostración contiene seis torres ubicadas en la cuenca neuquina, tres cáma
 - Catálogo con búsqueda por equipo, ubicación u operador, filtros por tipo y estado, y formulario para incorporar torres.
 - Ficha del equipo con cámaras, parámetros e historial gráfico, anomalías y ubicación.
 - Cámaras configurables: imagen HTTPS o transmisión HLS, controles de video, reconexión y pantalla completa. El reproductor HLS se descarga solamente cuando hace falta.
+- Inspección con dron por torre: enlace de YouTube configurable por administradores, reproductor integrado bajo demanda, pantalla completa y acceso alternativo a YouTube. Ver [la guía de uso](docs/INSPECCION-DRON.md).
 - Anomalías con imagen, prioridad, fecha, cámara de origen y estado persistente: pendiente, revisada o resuelta.
 - Interfaces adaptadas a escritorio y móvil; navegación por teclado y diálogos con foco contenido.
 
