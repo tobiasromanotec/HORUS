@@ -1,0 +1,1 @@
+Fixture HLS sintético, generado con FFmpeg (`testsrc2`, 320 × 180, 12 fps, H.264 baseline, 4 segundos, sin audio). No contiene imágenes ni datos de instalaciones reales. Los tests interceptan únicamente `camera.example.test` y sirven estos segmentos para verificar reproducción real en el navegador, sin depender de una cámara externa.

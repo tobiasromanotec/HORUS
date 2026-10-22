@@ -1,0 +1,23 @@
+# Demo gratuita: SQLite es temporal y puede reiniciarse entre despliegues.
+services:
+  - type: web
+    name: horus-demo
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci --include=dev --no-audit --no-fund && npm run build
+    startCommand: 'PUBLIC_ORIGIN="${RENDER_EXTERNAL_URL%/}" node server/index.mjs'
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "true"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATA_DIR
+        value: /tmp/horus-demo
